@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import Song from "../models/song.js";
-
+import { searchTracks } from "../services/spotifyService.js";
 // Only these fields can be set by a request. This stops someone sending
 // { "_id": ... } or other fields you never meant to accept.
 const pickSongFields = (body) => {
@@ -22,6 +22,22 @@ export const getSongById = async (req, res) => {
   const song = await Song.findById(req.params.id);
   if (!song) return res.status(404).json({ message: "Song not found" });
   res.json(song);
+};
+
+// GET /api/songs/search?q=...
+export const searchSpotify = async (req, res) => {
+  const query = req.query.q?.trim();
+  if (!query) {
+    return res.status(400).json({ message: "Query parameter q is required" });
+  }
+
+  try {
+    const results = await searchTracks(query);
+    res.json(results);
+  } catch (error) {
+    console.error(error.message);
+    res.status(502).json({ message: "Spotify search failed" });
+  }
 };
 
 // POST /api/songs
