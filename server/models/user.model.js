@@ -1,70 +1,41 @@
 import mongoose from "mongoose";
-import crypto from "crypto";
-const UserSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    trim: true,
-    required: "Name is required",
-  },
-  email: {
-    type: String,
-    trim: true,
-    unique: "Email already exists",
-    match: [/.+\@.+\..+/, "Please fill a valid email address"],
-    required: "Email is required",
-  },
-  created: {
-    type: Date,
-    default: Date.now,
-  },
-  updated: {
-    type: Date,
-    default: Date.now,
-  },
-  hashed_password: {
-    type: String,
-    required: "Password is required",
-  },
-  salt: String,
-});
-UserSchema.virtual("password")
-  .set(function (password) {
-    this._password = password;
-    this.salt = this.makeSalt();
-    this.hashed_password = this.encryptPassword(password);
-    //this.hashed_password = password;
-  })
-  .get(function () {
-    return this._password;
-  });
-UserSchema.path("hashed_password").validate(function (v) {
-  if (this._password && this._password.length < 6) {
-    this.invalidate("password", "Password must be at least 6 characters.");
-  }
-  if (this.isNew && !this._password) {
-    this.invalidate("password", "Password is required");
-  }
-}, null);
+import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
+import { promisify } from "node:util";
 
-UserSchema.methods = {
-  authenticate: function (plainText) {
-    return this.encryptPassword(plainText) === this.hashed_password;
+const scrypt = promisify(scryptCallback);
+
+const userSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true, trim: true },
+    email: {
+      type: String, required: true, unique: true,
+      lowercase: true, trim: true,
+      match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, "Invalid email address"]
+    },
+    hashed_password: { type: String, required: true, select: false },
+    salt: { type: String, required: true, select: false }
   },
-  encryptPassword: function (password) {
-    if (!password) return "";
-    try {
-      return crypto
-        .createHmac("sha1", this.salt)
-        .update(password)
-        .digest("hex");
-    } catch (err) {
-      return "";
-    }
-  },
-  makeSalt: function () {
-    return Math.round(new Date().valueOf() * Math.random()) + "";
-  },
+  { timestamps: true }
+);
+
+userSchema.methods.setPassword = async function (password) {
+  if (typeof password !== "string" || password.length < 8) {
+    throw new Error("Password must be at least 8 characters");
+  }
+  this.salt = randomBytes(16).toString("hex");
+  const hash = await scrypt(password, this.salt, 64);
+  this.hashed_password = hash.toString("hex");
 };
 
-export default mongoose.model("User", UserSchema);
+userSchema.methods.authenticate = async function (password) {
+  if (typeof password !== "string" || !this.salt || !this.hashed_password) {
+    return false;
+  }
+  // Newly created accounts use scrypt (128 hexadecimal characters).
+  if (this.hashed_password.length !== 128) return false;
+  const candidate = await scrypt(password, this.salt, 64);
+  const saved = Buffer.from(this.hashed_password, "hex");
+  return saved.length === candidate.length && timingSafeEqual(saved, candidate);
+};
 
+export default mongoose.model("User", userSchema);
