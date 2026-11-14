@@ -66,8 +66,7 @@ export const searchTracks = async (query) => {
   return data.tracks.items.map(formatTrack);
 };
 
-export const getTrackWithGenres = async (spotifyId) => {
+export const getTrack = async (spotifyId) => {
   const track = await spotifyGet(`/tracks/${encodeURIComponent(spotifyId)}`);
-  const artist = await spotifyGet(`/artists/${track.artists[0].id}`);
-  return { ...formatTrack(track), genres: artist.genres ?? [] };
+  return formatTrack(track);
 };
