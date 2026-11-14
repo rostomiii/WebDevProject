@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import Song from "../models/song.js";
-import { searchTracks } from "../services/spotifyService.js";
+import { searchTracks, getTrackWithGenres } from "../services/spotifyService.js";
 // Only these fields can be set by a request. This stops someone sending
 // { "_id": ... } or other fields you never meant to accept.
 const pickSongFields = (body) => {
@@ -54,6 +54,35 @@ export const createSong = async (req, res) => {
     }
     throw error;
   }
+};
+
+// POST /api/songs/import   body: { "spotifyId": "..." }
+export const importFromSpotify = async (req, res) => {
+  const spotifyId = req.body?.spotifyId;
+
+  // Must be a plain string. Blocks inputs like { "$ne": null }, which MongoDB
+  // would treat as a query operator and match ANY song.
+  if (typeof spotifyId !== "string" || !spotifyId.trim()) {
+    return res.status(400).json({ message: "spotifyId (string) is required" });
+  }
+
+  // Already saved? Return it instead of creating a duplicate.
+  const existing = await Song.findOne({ spotifyId });
+  if (existing) return res.status(200).json(existing);
+
+  let songData;
+  try {
+    songData = await getTrackWithGenres(spotifyId);
+  } catch (error) {
+    if (error.status === 400 || error.status === 404) {
+      return res.status(404).json({ message: "Track not found on Spotify" });
+    }
+    console.error(error.message);
+    return res.status(502).json({ message: "Spotify request failed" });
+  }
+
+  const song = await Song.create(songData);
+  res.status(201).json(song);
 };
 
 // PUT /api/songs/:id

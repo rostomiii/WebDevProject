@@ -45,20 +45,29 @@ const formatTrack = (track) => ({
   spotifyUrl: track.external_urls.spotify,
 });
 
-export const searchTracks = async (query) => {
+// Shared helper: GET any Spotify endpoint with a valid token
+const spotifyGet = async (path) => {
   const token = await getAccessToken();
-
-  // Spotify's max is 10 per request for dev-mode apps
-  const params = new URLSearchParams({ q: query, type: "track", limit: "10" });
-
-  const response = await fetch(`${API_URL}/search?${params}`, {
+  const response = await fetch(`${API_URL}${path}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
 
   if (!response.ok) {
-    throw new Error(`Spotify search failed: ${response.status}`);
+    const error = new Error(`Spotify request failed: ${response.status}`);
+    error.status = response.status; // so the controller can tell 404 from other failures
+    throw error;
   }
+  return response.json();
+};
 
-  const data = await response.json();
+export const searchTracks = async (query) => {
+  const params = new URLSearchParams({ q: query, type: "track", limit: "10" });
+  const data = await spotifyGet(`/search?${params}`);
   return data.tracks.items.map(formatTrack);
+};
+
+export const getTrackWithGenres = async (spotifyId) => {
+  const track = await spotifyGet(`/tracks/${encodeURIComponent(spotifyId)}`);
+  const artist = await spotifyGet(`/artists/${track.artists[0].id}`);
+  return { ...formatTrack(track), genres: artist.genres ?? [] };
 };
