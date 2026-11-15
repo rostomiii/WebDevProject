@@ -4,14 +4,18 @@ import connectDB from "./config/db.js";
 import userRoutes from "./routes/user.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 import songRoutes from "./routes/songRoutes.js";
+import playlistRoutes from "./routes/playlistRoutes.js";
 
 const app = express();
 app.use(express.json());
 
+
 app.get("/", (_req, res) => res.send("Daytime Radio backend is running!"));
 app.use(userRoutes);
 app.use(authRoutes);
+app.use("/api/playlists", playlistRoutes);
 app.use("/api/songs", songRoutes);
+
 
 app.use((err, _req, res, _next) => {
   if (err.name === "UnauthorizedError") {
